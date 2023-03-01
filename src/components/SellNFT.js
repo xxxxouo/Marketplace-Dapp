@@ -1,15 +1,78 @@
 import Navbar from "./Navbar";
 import { useState } from "react";
+import {ethers} from 'ethers'
 import { uploadFileToIPFS, uploadJSONToIPFS } from "../pinata";
 import Marketplace from '../Marketplace.json';
-import { useLocation } from "react-router";
+import { useLocation,useNavigate } from "react-router";
 
 export default function SellNFT () {
     const [formParams, updateFormParams] = useState({ name: '', description: '', price: ''});
     const [fileURL, setFileURL] = useState(null);
-    const ethers = require("ethers");
     const [message, updateMessage] = useState('');
     const location = useLocation();
+    const navigate = useNavigate()
+    
+    const onChangeFile = async(e) =>{
+      console.log(e);
+      let file = e.target.files[0];
+
+      try {
+        const { success,pinataURL } = await uploadFileToIPFS(file);
+        if(success){
+          console.log("Uploaded img to Pinata:", pinataURL);
+          setFileURL(pinataURL);
+        }
+      } catch (error) {
+        console.log("Error during file upload", e);
+      }
+    }
+
+    const uploadMetadataToIPFS = async()=>{
+      const { name,description,price } = formParams;
+      if(!name || !description || !price || !fileURL){
+        return ;
+      }
+
+      const nftJSON = {
+        name,description,price, image:fileURL
+      };
+      try {
+        const response = await uploadJSONToIPFS(nftJSON)
+        if(response.success){
+          console.log("Uploaded JSON to Pinata:", response.pinataURL);
+          return response.pinataURL;
+        }
+      } catch (error) {
+        console.log("error uploading json metadata:",error);
+      }
+    }
+
+    const listNFT = async(e) =>{
+      e.preventDefault()
+      try {
+        const metadataURL = await uploadMetadataToIPFS();
+        if(!metadataURL){
+          return;
+        }
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const singer = provider.getSigner();
+        updateMessage("pls wait ...uploading (up to 5 mins)");
+
+        const contract = new ethers.Contract(Marketplace.address,Marketplace.abi,singer);
+        const price = ethers.utils.parseUnits(formParams.price,'ether');
+        let listingPrice = await contract.getListPirce();
+        listingPrice = listingPrice.toString();
+
+        const tx = await contract.createToken(metadataURL,price,{value:listingPrice})
+        await tx.wait()
+        alert("Successfully listed your NFT,hash:"+tx.hash)
+        updateMessage("")
+        updateFormParams({ name: '', description: '', price: ''})
+        navigate('/')
+      } catch (error) {
+        console.log(error);
+      }
+    }
 
     return (
         <div className="">
@@ -31,11 +94,11 @@ export default function SellNFT () {
                 </div>
                 <div>
                     <label className="block text-purple-500 text-sm font-bold mb-2" htmlFor="image">Upload Image</label>
-                    <input type={"file"} onChange={""}></input>
+                    <input type={"file"} onChange={onChangeFile}></input>
                 </div>
                 <br></br>
                 <div className="text-green text-center">{message}</div>
-                <button onClick={""} className="font-bold mt-10 w-full bg-purple-500 text-white rounded p-2 shadow-lg">
+                <button onClick={listNFT} className="font-bold mt-10 w-full bg-purple-500 text-white rounded p-2 shadow-lg">
                     List NFT
                 </button>
             </form>

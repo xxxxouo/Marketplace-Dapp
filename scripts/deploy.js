@@ -10,6 +10,7 @@ async function main() {
 
   await marketplace.deployed();
 
+  console.log("nftContract deployed to ", marketplace.address);
   const data = {
     address: marketplace.address,
     abi: JSON.parse(marketplace.interface.format('json'))
